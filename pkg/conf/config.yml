@@ -1,0 +1,273 @@
+monitor:
+  port: 12112
+mail:
+  sender: xxx
+  token: xxx
+  receiver: xxx
+job:
+  interval: 20
+  timeout: 10
+impala:
+  host: core1.lls.com
+  port: 21050
+  database: stg_stream
+table_match:
+  table_arr:
+    - source: wkfl_app_main
+      target: stg_u002_wkfl_app_main
+      db: db_128_76_wkfl
+    - source: wkfl_app_history
+      target: stg_u002_wkfl_app_history
+      db: db_128_76_wkfl
+    - source: act_ru_task
+      target: stg_u002_act_ru_task
+      db: db_128_76_wkfl
+    - source: sys_org
+      target: stg_n002_sys_org
+      db: db_128_76_sys
+    - source: sys_user
+      target: stg_n002_sys_user
+      db: db_128_76_sys
+    - source: ast_asset
+      target: stg_stream_y001_ast_asset
+      db: db_128_76_asset
+    - source: ast_asset_batch
+      target: stg_stream_y001_ast_asset_batch
+      db: db_128_76_asset
+    - source: ast_mode_conf
+      target: stg_stream_y001_ast_mode_conf
+      db: db_128_76_asset
+    - source: ast_asset_invo
+      target: stg_y001_ast_asset_invo
+      db: db_128_76_asset
+    - source: ast_invoice
+      target: stg_y001_ast_invoice
+      db: db_128_76_asset
+    - source: ast_asset_aiphone
+      target: stg_y001_ast_asset_aiphone
+      db: db_128_76_asset
+    - source: ast_contract
+      target: stg_y001_ast_contract
+      db: db_128_76_asset
+    - source: ast_express_received
+      target: stg_y001_ast_express_received
+      db: db_128_76_asset
+    - source: ast_risk_check_asset
+      target: stg_stream_y001_ast_risk_check_asset
+      db: db_128_76_asset
+    - source: ast_asset_monitor
+      target: stg_stream_y001_ast_asset_monitor
+      db: db_128_76_asset
+    - source: ast_test_payment_flows
+      target: stg_y001_ast_test_payment_flows
+      db: db_128_76_asset
+    - source: ast_test_payment_account
+      target: stg_y001_ast_test_payment_account
+      db: db_128_76_asset
+    - source: ast_asset_extra
+      target: stg_y001_ast_asset_extra
+      db: db_128_76_asset
+    - source: cust_project_company_rel
+      target: stg_f001_cust_project_company_rel
+      db: db_128_76_cust
+    - source: cust_project_company_user
+      target: stg_f001_cust_project_company_user
+      db: db_128_76_cust
+    - source: cust_company_info
+      target: stg_f001_cust_company_info
+      db: db_128_76_cust
+    - source: cust_company_user
+      target: stg_f001_cust_company_user
+      db: db_128_76_cust
+    - source: cust_factor
+      target: stg_f001_cust_factor
+      db: db_128_76_cust
+    - source: cust_project_company
+      target: stg_f001_cust_project_company
+      db: db_128_76_cust
+    - source: cust_project_area
+      target: stg_f001_cust_project_area
+      db: db_128_76_cust
+    - source: cust_core_company
+      target: stg_f001_cust_core_company
+      db: db_128_76_cust
+    - source: cust_company_info_store
+      target: stg_f001_cust_company_info_store
+      db: db_128_76_cust
+    - source: cust_company_user_store
+      target: stg_f001_cust_company_user_store
+      db: db_128_76_cust
+    - source: cust_project_company_user_store
+      target: stg_f001_cust_project_company_user_store
+      db: db_128_76_cust
+    - source: wkfl_app_history
+      target: stg_stream_l009_wkfl_app_history
+      db: db_100_242_workflow
+    - source: wkfl_app_main
+      target: stg_stream_l009_wkfl_app_main
+      db: db_100_242_workflow
+    - source: wkfl_app_main
+      target: stg_l001_wkfl_app_main
+      db: db_0_95_local_check
+    - source: wkfl_app_history
+      target: stg_l001_wkfl_app_history
+      db: db_0_95_local_check
+    - source: wkfl_app_main
+      target: stg_h003_wkfl_app_main
+      db: db_128_75_wkfl
+    - source: wkfl_app_history
+      target: stg_h003_wkfl_app_history
+      db: db_128_75_wkfl
+    - source: act_ru_task
+      target: stg_h003_act_ru_task
+      db: db_128_75_wkfl
+    - source: sys_user
+      target: stg_s005_sys_user
+      db: db_100_254_sys
+    - source: sys_user_role
+      target: stg_s005_sys_user_role
+      db: db_100_254_sys
+    - source: sys_role
+      target: stg_s005_sys_role
+      db: db_100_254_sys
+    - source: ast_asset_main
+      target: stg_stream_h004_ast_asset_main
+      db: db_128_75_asset
+    - source: ast_asset_flow
+      target: stg_stream_h004_ast_asset_flow
+      db: db_128_75_asset
+    - source: ast_asset
+      target: stg_stream_h004_ast_asset
+      db: db_128_75_asset
+    - source: ast_invoice
+      target: stg_stream_h004_ast_invoice
+      db: db_128_75_asset
+    - source: ast_asset_invo
+      target: stg_stream_h004_ast_asset_invo
+      db: db_128_75_asset
+    - source: cust_enterprise
+      target: stg_stream_h007_cust_enterprise
+      db: db_128_75_cust
+    - source: cust_enterprise_user
+      target: stg_stream_h007_cust_enterprise_user
+      db: db_128_75_cust
+    - source: cust_company_user_ref
+      target: stg_p002_cust_company_user_ref
+      db: db_0_95_consumer
+    - source: cust_company
+      target: stg_p002_cust_company
+      db: db_0_95_consumer
+    - source: cust_company_user
+      target: stg_p002_cust_company_user
+      db: db_0_95_consumer
+    - source: sys_user
+      target: stg_l002_sys_user
+      db: db_0_95_agw
+    - source: sys_user
+      target: stg_p003_sys_user
+      db: db_0_95_scf
+    - source: app_outer_data_storage
+      target: stg_b001_app_outer_data_storage
+      db: db_128_17_dbassdb
+    - source: wkfl_app_history
+      target: stg_i003_wkfl_app_history
+      db: db_128_75_abs
+    - source: wkfl_app_main
+      target: stg_i003_wkfl_app_main
+      db: db_128_75_abs
+    - source: act_ru_task
+      target: stg_i003_act_ru_task
+      db: db_128_75_abs
+db:
+  db_info:
+    # db 对应上面的表信息中的 db
+    - db: db_128_76_wkfl
+      host: 10.10.128.76
+      port: 3306
+      user: canal
+      password: Lls16888canal!
+      database: ams_wkfl
+    - db: db_128_76_sys
+      host: 10.10.128.76
+      port: 3306
+      user: canal
+      password: Lls16888canal!
+      database: ams_sys
+    - db: db_128_76_asset
+      host: 10.10.128.76
+      port: 3306
+      user: canal
+      password: Lls16888canal!
+      database: ams_asset
+    - db: db_128_76_cust
+      host: 10.10.128.76
+      port: 3306
+      user: canal
+      password: Lls16888canal!
+      database: ams_cust
+    - db: db_0_95_local_check
+      host: 10.10.0.95
+      port: 3306
+      user: canal
+      password: Lls16888canal!
+      database: wec_local_check
+    - db: db_0_95_consumer
+      host: 10.10.0.95
+      port: 3306
+      user: canal
+      password: Lls16888canal!
+      database: wec_local_customer
+    - db: db_0_95_agw
+      host: 10.10.0.95
+      port: 3306
+      user: canal
+      password: Lls16888canal!
+      database: wec_local_system_agw
+    - db: db_0_95_scf
+      host: 10.10.0.95
+      port: 3306
+      user: canal
+      password: Lls16888canal!
+      database: wec_local_system_scf
+    - db: db_100_242_workflow
+      host: 10.10.100.242
+      port: 33306
+      user: canal
+      password: Lls16888canal!
+      database: sme_workflow
+    - db: db_128_75_wkfl
+      host: 10.10.128.75
+      port: 23306
+      user: canal
+      password: Lls16888canal!
+      database: operation_wkfl
+    - db: db_128_75_asset
+      host: 10.10.128.75
+      port: 23306
+      user: canal
+      password: Lls16888canal!
+      database: operation_asset
+    - db: db_128_75_cust
+      host: 10.10.128.75
+      port: 23306
+      user: canal
+      password: Lls16888canal!
+      database: operation_cust
+    - db: db_128_75_abs
+      host: 10.10.128.75
+      port: 23306
+      user: canal
+      password: Lls16888canal!
+      database: abs_rec_wkfl
+    - db: db_100_254_sys
+      host: 10.10.100.254
+      port: 3306
+      user: canal
+      password: Lls16888canal!
+      database: lls_sys
+    - db: db_128_17_dbassdb
+      host: 10.10.128.17
+      port: 3306
+      user: canal
+      password: Lls16888canal!
+      database: dbassdb

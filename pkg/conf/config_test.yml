@@ -1,0 +1,27 @@
+monitor:
+  port: 12112
+mail:
+  sender: xxx
+  token: xxx
+  receiver: xxx
+job:
+  interval: 20
+  timeout: 10
+impala:
+  host: core1.lls.com
+  port: 21050
+  database: dw
+# 测试环境配置: 仅用于测试，不需要管数据的真实性
+table_match:
+  table_arr:
+    - source: test_student
+      target: dws_sme_apply_loan_info
+      db: db_test
+db:
+  db_info:
+    - db: db_test
+      host: 172.16.88.34
+      port: 3306
+      user: root
+      password: qinglong7130
+      database: temp
