@@ -1,25 +1,47 @@
 # kudu-data-monitor (kudu 实时数据监控)
-需求背景: kudu 数据需要保持和源数据（mysql）完全一致
+需求背景: 通过 datalink 从 mysql 同步数据到 kudu , kudu 数据需要保持和源数据（mysql）完全一致，由于 源表进行 ddl 后 会导致 kudu 数据无法正常同步，因此需要借助其他服务，进行 表重建、任务重置和重启的操作
 
 ## 使用方式
 ### 基本配置
-#### mysql 配置
-参考 config.yml，在 db 域内 填写 mysql 的基本配置即可
-db:
-  db_info:
-    - db: 数据库介质名称（注意不是库名，需要唯一标识，一般为 db_ip_库名）
-      host: 数据库域名或ip
-      port: 端口
-      user: 账号，一般为只读账号 canal
-      password: 账号密码
-      database: 数据库名
+
+#### 表映射配置
+
+```
+conf_class:
+  name: 表映射加载来源，可选 datalink / file, 建议使用 datalink
+  interval: 配置更新周期
+  min_mapping_count: 最少映射数，用于做配置检查，防止配置读取失败的时候误覆盖
+```
 
 #### impala 地址
-参考 config.yml，在 impala 域内 填写 impala 的地址
+```
 impala:
   host: impalad 域名或ip
   port: impalad 端口
-  database: 库名，当前数据架构下，实时数据都放在同一张表中
+  database: 库名
+```
+
+#### datalink 服务地址
+```
+datalink:
+  user: 服务登录用户名
+  password: 服务登录密码
+  host: 服务域名
+  port: 服务端口
+  session_internal: session id 更新周期
+```
+
+#### 统计数据差异任务配置
+
+```
+count:
+  interval: 任务统计周期，建议1h 左右一次即可
+  timeout: 单次统计任务的超时时间
+```
+
+#### datalink 任务恢复配置
+
+参考 config.yml 中的配置详细描述
 
 #### 监控周期
 需要根据实际任务执行情况，确认任务执行周期 和 单次超时时间，比如 在线上跑监控任务，需要查询的表比较多，数据量也比较多，impala 查询 count 可能会比较费时，需要将周期尽量设置长一些
@@ -30,11 +52,11 @@ job:
   env: test (环境名, 在告警标题中体现)
 
 #### 告警发送
-目前支持通过QQ邮件发送告警，需要提供QQ邮箱的 SMTP token、发送人和接收人，多个接收人通过逗号分隔
 mail:
-  sender: xxx
-  token: xxx
-  receiver: xxx
+  host: smtp host
+  sender: 发送人邮箱
+  token: smtp token
+  receiver: 收件人邮箱
 
 #### metrics 监控指标接口
 monitor:
@@ -54,18 +76,19 @@ make build
 ```
 
 启动:
-./main --conf=/opt/modules/kudu-data-monitor/config.yml
+./main --conf=./config.yml
 
 ## 环境依赖
 
 - 占用一个端口提供 prometheus 监控接口
 
 ## 后续完善
-### 任务执行超时，或者是 执行失败，可以包含更多的错误信息
--- 可通过开一个新的 channel 单独进行错误信息的传递
 
 ### 数据量对比阈值放到配置文件中
 -- 参考: pkg/monitorjob/countmonitorjob.go
 
 ### 数据量统计周报（已实现）
 每周发送一次 所有表的数据量对比
+
+### datalink 任务自动恢复（已实现）
+通过 datalink 同步的 kudu 实时表，在发现和源表数据量有差别的时候，会自动重启任务

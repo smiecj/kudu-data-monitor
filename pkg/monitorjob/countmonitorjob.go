@@ -9,13 +9,12 @@ import (
 	"sync"
 	"time"
 
-	"git.hrlyit.com/beebird/cdh-migration/kudu-data-monitor/pkg/conf"
-	"git.hrlyit.com/beebird/cdh-migration/kudu-data-monitor/pkg/countjobmanager"
-	"git.hrlyit.com/beebird/cdh-migration/kudu-data-monitor/pkg/countjobmanager/impala"
-	"git.hrlyit.com/beebird/cdh-migration/kudu-data-monitor/pkg/countjobmanager/mysql"
 	"github.com/smiecj/go_common/util/alert"
 	"github.com/smiecj/go_common/util/log"
 	"github.com/smiecj/go_common/util/monitor"
+	"github.com/smiecj/kudu-data-monitor/pkg/countjob"
+	"github.com/smiecj/kudu-data-monitor/pkg/recoveryjob"
+	"github.com/smiecj/kudu-data-monitor/pkg/task"
 )
 
 // 数据量对比阈值（包括 本身count 阈值和 百分比阈值）
@@ -24,6 +23,7 @@ type countDiffThreshold struct {
 	precentage float32
 }
 
+// 判断数据量不一致的条件: 数据量相差超过指定值 or 超过指定百分比
 func (threshold *countDiffThreshold) IsExceedThreshold(count1, count2 int) bool {
 	diff := math.Abs(float64(count1) - float64(count2))
 	if diff > float64(threshold.count) {
@@ -69,16 +69,19 @@ type countMonitorJob struct {
 	summaryTitle string
 
 	// mysql and impala count job manager
-	mysqlCountJobManager  countjobmanager.CountJobManager
-	impalaCountJobManager countjobmanager.CountJobManager
+	mysqlCountJobManager  countjob.CountJobManager
+	impalaCountJobManager countjob.CountJobManager
 
 	// mysql and impala conf manager
-	mysqlConfManager  *conf.MysqlConfManager
-	impalaConfManager *conf.ImpalaConfManager
+	mysqlTaskManager  task.TaskManager
+	impalaTaskManager task.TaskManager
 
 	// monitor: time cost and execute count
 	timeCostGauge *monitor.PrometheusGauge
 	executedCount *monitor.PrometheusCounter
+
+	// recovery job manager
+	recoveryJobManager recoveryjob.JobManager
 }
 
 // 初始化任务执行器
@@ -96,15 +99,17 @@ func (job *countMonitorJob) init(jobConf *monitorJobConf) error {
 
 	// 初始化配置管理器
 	job.conf = jobConf
-	job.mysqlConfManager = conf.GetMySQLConfManager()
-	job.impalaConfManager = conf.GetImpalaConfManager()
-	job.mysqlCountJobManager = mysql.GetCountJobManager()
-	job.impalaCountJobManager = impala.GetCountJobManager()
+	job.mysqlTaskManager = task.GetMySQLTaskManager(jobConf.configManager)
+	job.impalaTaskManager = task.GetImpalaTaskManager(jobConf.configManager)
+	job.mysqlCountJobManager = countjob.NewCountJobManager("mysql")
+	job.impalaCountJobManager = countjob.NewCountJobManager("impala")
 
 	// 初始化监控指标
-	monitorManager := conf.GetMonitorManager()
+	monitorManager := jobConf.monitorManager
 	monitorManager.AddMetrics(monitor.NewMonitorMetrics(monitor.Gauge, metricsTimeCost, metricsTimeCost, monitor.LabelKey{}))
 	monitorManager.AddMetrics(monitor.NewMonitorMetrics(monitor.Counter, metricsExecuteCount, metricsExecuteCount, monitor.LabelKey{}))
+
+	job.recoveryJobManager = recoveryjob.GetJobManager(jobConf.configManager, jobConf.alerter, jobConf.interval)
 
 	timeCostGaugeObj, _ := monitorManager.GetMetrics(metricsTimeCost)
 	executedCountObj, _ := monitorManager.GetMetrics(metricsExecuteCount)
@@ -112,8 +117,8 @@ func (job *countMonitorJob) init(jobConf *monitorJobConf) error {
 	job.executedCount = executedCountObj.(*monitor.PrometheusCounter)
 
 	// 初始化通知标题
-	job.alertTitle = fmt.Sprintf("[alert] count_monitor_job env_%s", jobConf.env)
-	job.summaryTitle = fmt.Sprintf("[summary] count_monitor_job env_%s", jobConf.env)
+	job.alertTitle = fmt.Sprintf("[alert] count_monitor_job")
+	job.summaryTitle = fmt.Sprintf("[summary] count_monitor_job")
 	return nil
 }
 
@@ -131,10 +136,9 @@ func (job *countMonitorJob) Start() error {
 				// timeout 后需要发送告警信息
 				log.Warn("[countMonitorJob.Start] timeout: %d", job.conf.timeout)
 				job.conf.alerter.Alert(alert.SetAlertTitleAndMsg(
-					job.alertTitle, alertMsgJobTimeout),
-					alert.SetReceiverArr(job.conf.receiverArr))
+					job.alertTitle, alertMsgJobTimeout))
 			case <-job.execute(timeoutCtx):
-				log.Info("[countMonitorJob.Start] compare finish")
+				log.Info("[countMonitorJob.Start] count job finish")
 			}
 
 			endTime := time.Now()
@@ -170,38 +174,38 @@ func (job *countMonitorJob) execute(ctx context.Context) <-chan int {
 func (job *countMonitorJob) executeCountJob(ctx context.Context, taskChan chan int) {
 	log.Info("[countMonitorJob.executeCountJob] counter job started")
 	// get all mysql table
-	mysqlTableArr := job.mysqlConfManager.GetTableArr()
-	impalaTableArr := job.impalaConfManager.GetTableArr()
-	mysqlCountRetChan := make(chan countjobmanager.TableCountRet)
-	impalaCountRetChan := make(chan countjobmanager.TableCountRet)
+	mysqlTaskArr := job.mysqlTaskManager.GetTaskArr()
+	impalaTaskArr := job.impalaTaskManager.GetTaskArr()
+	mysqlCountRetChan := make(chan countjob.TableCountRet)
+	impalaCountRetChan := make(chan countjob.TableCountRet)
+	log.Info("[countMonitorJob.executeCountJob] mysql task count: %d, impala task count: %d", len(mysqlTaskArr), len(impalaTaskArr))
 
 	// start mysql count job
 	go func() {
-		job.mysqlCountJobManager.Execute(ctx, mysqlTableArr, mysqlCountRetChan)
+		job.mysqlCountJobManager.Execute(ctx, mysqlTaskArr, mysqlCountRetChan)
 	}()
 
 	// start impala count job
 	go func() {
-		job.impalaCountJobManager.Execute(ctx, impalaTableArr, impalaCountRetChan)
+		job.impalaCountJobManager.Execute(ctx, impalaTaskArr, impalaCountRetChan)
 	}()
 
 	// wait for mysql and impala count job both finish
 	wg := sync.WaitGroup{}
 	wg.Add(2)
 
-	mysqlTableCountMap := make(map[string]int)
-	impalaTableCountMap := make(map[string]int)
-	tableNameMap := job.mysqlConfManager.GetTableNameMap()
+	mysqlTableCountMap := make(map[string]countjob.TableCountRet)
+	impalaTableCountMap := make(map[string]countjob.TableCountRet)
 	go func() {
 		for mysqlCountRet := range mysqlCountRetChan {
-			mysqlTableCountMap[mysqlCountRet.GetTableName()] = mysqlCountRet.Count
+			mysqlTableCountMap[mysqlCountRet.FullTable()] = mysqlCountRet
 		}
 		wg.Done()
 	}()
 
 	go func() {
 		for impalaCountRet := range impalaCountRetChan {
-			impalaTableCountMap[impalaCountRet.GetTableName()] = impalaCountRet.Count
+			impalaTableCountMap[impalaCountRet.FullTable()] = impalaCountRet
 		}
 		wg.Done()
 	}()
@@ -210,59 +214,91 @@ func (job *countMonitorJob) executeCountJob(ctx context.Context, taskChan chan i
 
 	// compare whether mysql table and impala table count same
 	alertMsgBuf := bytes.Buffer{}
-	for mysqlTableName, mysqlDataCount := range mysqlTableCountMap {
-		impalaTableName := tableNameMap[mysqlTableName]
-		if impalaTableName == "" {
-			alertMsgBuf.WriteString(fmt.Sprintf("mysql table: %s cannot match impala table\n", mysqlTableName))
-		} else {
-			impalaDataCount := impalaTableCountMap[impalaTableName]
+	tableNameMap := job.conf.confManager.GetTableNameMap()
+	toRecoverImpalaRetArr := make([]countjob.TableCountRet, 0)
+	for mysqlFullTableName, mysqlCountRet := range mysqlTableCountMap {
+		if impalaFullTableName, ok := tableNameMap[mysqlFullTableName]; ok {
+			impalaCountRet := impalaTableCountMap[impalaFullTableName]
 
-			// 判断数据量不一致的条件: 数据量相差超过指定值 or 超过指定百分比
+			mysqlDataCount, impalaDataCount := mysqlCountRet.Count(), impalaCountRet.Count()
+
 			if countThreshold.IsExceedThreshold(mysqlDataCount, impalaDataCount) {
 				alertMsgBuf.WriteString(fmt.Sprintf("mysql table: %s, impala table: %s, data count: %d -> %d\n",
-					mysqlTableName, impalaTableName, mysqlDataCount, impalaDataCount))
+					mysqlFullTableName, impalaFullTableName, mysqlDataCount, impalaDataCount))
+				toRecoverImpalaRetArr = append(toRecoverImpalaRetArr, impalaCountRet)
 			}
+		} else {
+			alertMsgBuf.WriteString(fmt.Sprintf("mysql table: %s cannot match impala table\n", mysqlFullTableName))
 		}
 	}
 
-	// send alert msg
+	log.Info("[countMonitorJob.executeCountJob] to recover table countL: %d, %v", len(toRecoverImpalaRetArr), toRecoverImpalaRetArr)
+	job.addRecoveryJob(toRecoverImpalaRetArr)
+
+	// 发送汇总后的表数据量告警消息
 	if alertMsgBuf.Len() > 0 {
 		log.Warn("[countMonitorJob.executeCountJob] ready to send alert msg, title: %s, msg: %s",
 			job.alertTitle,
 			alertMsgBuf.String())
 		job.conf.alerter.Alert(
-			alert.SetAlertTitleAndMsg(job.alertTitle, alertMsgBuf.String()),
-			alert.SetReceiverArr(job.conf.receiverArr))
+			alert.SetAlertTitleAndMsg(job.alertTitle, alertMsgBuf.String()))
 	}
 
 	job.sendSummaryReport(mysqlTableCountMap, impalaTableCountMap, tableNameMap)
 	close(taskChan)
 }
 
-// 发送周报，每周天发送一次（服务重启后状态会被重置）
-func (job *countMonitorJob) sendSummaryReport(mysqlTableCountMap, impalaTableCountMap map[string]int, tableNameMap map[string]string) {
+// 发送周报，每周发送一次（服务重启后状态会被重置）
+func (job *countMonitorJob) sendSummaryReport(mysqlTableCountMap, impalaTableCountMap map[string]countjob.TableCountRet, tableNameMap map[string]string) {
 	if !currentPeriodHasSendReport && time.Now().Weekday() == summaryReportSendWeekDay && time.Now().Hour() == summaryReportSendHour {
 		currentPeriodHasSendReport = true
 		log.Info("[countMonitorJob.sendSummaryReport] ready to create and send summary report")
 
 		summaryContentBuf := bytes.Buffer{}
-		for mysqlTableName, mysqlDataCount := range mysqlTableCountMap {
-			impalaTableName := tableNameMap[mysqlTableName]
-			if impalaTableName == "" {
-				summaryContentBuf.WriteString(fmt.Sprintf("mysql table: %s cannot match impala table\n", mysqlTableName))
+		for mysqlFullTableName, mysqlDataCountRet := range mysqlTableCountMap {
+			impalaFullTableName := tableNameMap[mysqlFullTableName]
+			if impalaFullTableName == "" {
+				summaryContentBuf.WriteString(fmt.Sprintf("mysql table: %s cannot match impala table\n", mysqlFullTableName))
 			} else {
-				impalaDataCount := impalaTableCountMap[impalaTableName]
+				impalaDataCountRet := impalaTableCountMap[impalaFullTableName]
+				mysqlDataCount, impalaDataCount := mysqlDataCountRet.Count(), impalaDataCountRet.Count()
 				summaryContentBuf.WriteString(fmt.Sprintf("mysql table: %s, impala table: %s, data count: %d -> %d\n",
-					mysqlTableName, impalaTableName, mysqlDataCount, impalaDataCount))
+					mysqlFullTableName, impalaFullTableName, mysqlDataCount, impalaDataCount))
 			}
 		}
 
 		job.conf.alerter.Alert(
-			alert.SetAlertTitleAndMsg(job.summaryTitle, summaryContentBuf.String()),
-			alert.SetReceiverArr(job.conf.receiverArr))
+			alert.SetAlertTitleAndMsg(job.summaryTitle, summaryContentBuf.String()))
 	} else if time.Now().Weekday() != summaryReportSendWeekDay {
 		// 到第二天了要重置 发送状态
 		currentPeriodHasSendReport = false
+	}
+}
+
+// 添加 recovery job
+func (job *countMonitorJob) addRecoveryJob(countRetArr []countjob.TableCountRet) {
+	tableTaskIdMap := job.conf.confManager.GetTableTaskMap()
+	for _, currentCountRet := range countRetArr {
+		// 获取 impala 表对应的 task id
+		impalaFullTableName := currentCountRet.FullTable()
+		taskId, ok := tableTaskIdMap[impalaFullTableName]
+		if !ok {
+			log.Warn("[countMonitorJob.addRecoveryJob] impala table: %s, not found datalink task", impalaFullTableName)
+			continue
+		}
+		// 切分库表名
+
+		sourceHiveTable := currentCountRet.Table()
+		err := job.recoveryJobManager.Add(recoveryjob.JobConf{
+			SourceTable: sourceHiveTable,
+			TargetDB:    currentCountRet.DB(),
+			TargetTable: currentCountRet.Table(),
+			TaskId:      taskId,
+		})
+
+		if nil != err {
+			log.Warn("[countMonitorJob.addRecoveryJob] table %s recover failed: %s", impalaFullTableName, err.Error())
+		}
 	}
 }
 

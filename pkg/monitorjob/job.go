@@ -4,16 +4,15 @@ package monitorjob
 import (
 	"time"
 
+	"github.com/smiecj/go_common/config"
 	"github.com/smiecj/go_common/util/alert"
+	"github.com/smiecj/go_common/util/monitor"
+	"github.com/smiecj/kudu-data-monitor/pkg/conf"
 )
 
 const (
-	// minInterval = 1 * time.Minute
-	// minTimeout  = 30 * time.Second
-
-	// 测试阶段暂时改短一点
-	minInterval = 1 * time.Minute
-	minTimeout  = 10 * time.Second
+	minInterval = 10 * time.Minute
+	minTimeout  = 30 * time.Second
 )
 
 // actual monitor job
@@ -23,11 +22,12 @@ type monitorJob interface {
 
 // monitor job basic conf
 type monitorJobConf struct {
-	env         string
-	interval    time.Duration
-	timeout     time.Duration
-	alerter     alert.Alerter
-	receiverArr []string
+	interval       time.Duration
+	timeout        time.Duration
+	alerter        alert.Alerter
+	confManager    conf.ConfManager
+	configManager  config.Manager
+	monitorManager monitor.Manager
 }
 
 // 获取一个监控任务配置
@@ -65,18 +65,19 @@ func SetAlerter(alerter alert.Alerter) monitorJobConfSetter {
 	}
 }
 
-// 设置告警接收人
-func SetReceiverArr(receiverArr []string) monitorJobConfSetter {
-	return func(conf *monitorJobConf) error {
-		conf.receiverArr = append(conf.receiverArr, receiverArr...)
+// 设置 config manager
+func SetConfigManager(configManager config.Manager) monitorJobConfSetter {
+	return func(_conf *monitorJobConf) error {
+		_conf.configManager = configManager
+		_conf.confManager = conf.GetConfManager(configManager)
 		return nil
 	}
 }
 
-// 设置环境
-func SetEnv(env string) monitorJobConfSetter {
+// 设置 monitor manager
+func SetMonitorManager(monitorManager monitor.Manager) monitorJobConfSetter {
 	return func(conf *monitorJobConf) error {
-		conf.env = env
+		conf.monitorManager = monitorManager
 		return nil
 	}
 }

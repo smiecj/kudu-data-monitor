@@ -2,19 +2,14 @@ package main
 
 import (
 	"flag"
-	"os"
-	"strings"
+	"fmt"
 	"sync"
-	"time"
 
-	"git.hrlyit.com/beebird/cdh-migration/kudu-data-monitor/pkg/conf"
-	"git.hrlyit.com/beebird/cdh-migration/kudu-data-monitor/pkg/monitorjob"
 	"github.com/smiecj/go_common/config"
 	"github.com/smiecj/go_common/util/alert"
-	"github.com/smiecj/go_common/util/log"
 	"github.com/smiecj/go_common/util/mail"
 	"github.com/smiecj/go_common/util/monitor"
-	"github.com/smiecj/go_common/util/net"
+	"github.com/smiecj/kudu-data-monitor/pkg/monitorjob"
 )
 
 type mailConfig struct {
@@ -23,22 +18,23 @@ type mailConfig struct {
 	Receiver string `yaml:"receiver"`
 }
 
-type jobConfig struct {
-	Interval int    `yaml:"interval"`
-	Timeout  int    `yaml:"timeout"`
-	Env      string `yaml:"env"`
+type countConfig struct {
+	Interval int `yaml:"interval"`
+	Timeout  int `yaml:"timeout"`
+}
+
+type envConfig struct {
+	Name string `yaml:"name"`
 }
 
 const (
 	configSpaceMonitor = "monitor"
-	configSpaceMail    = "mail"
-	configSpaceJob     = "job"
-
-	configKeyPort = "port"
+	configSpaceCount   = "count"
+	configSpaceEnv     = "env"
 )
 
 var (
-	configFilePath = ""
+	configFilePath string
 )
 
 func init() {
@@ -48,64 +44,32 @@ func init() {
 
 // main: 启动任务
 func main() {
+	configManager, _ := config.GetYamlConfigManager(configFilePath)
+	monitorManager := monitor.GetPrometheusMonitorManager(configManager)
 
-	conf.SetConfigFilePath(configFilePath)
-	configManager, _ := config.GetYamlConfig(configFilePath)
+	startJob(configManager, monitorManager)
 
-	startPrometheusMetrics(configManager)
-
-	startJob(configManager)
-
-	// 设置一个 wait group 不让 main 方法退出
+	// wait group 不让 main 方法退出
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
 	wg.Wait()
 }
 
-// 启动 prometheus metrics 接口，进行一些基本的任务指标监控用
-func startPrometheusMetrics(configManager config.Manager) {
-	monitorPortObj, _ := configManager.Get(configSpaceMonitor, configKeyPort)
-	monitorPort := monitorPortObj.(int)
+func startJob(configManager config.Manager, monitorManager monitor.Manager) {
+	countConfig := countConfig{}
+	_ = configManager.Unmarshal(configSpaceCount, &countConfig)
 
-	// 检查端口是否被占用，如果被占用直接退出
-	if net.CheckLocalPortIsUsed(monitorPort) {
-		log.Error("[startPrometheusMetrics] monitor port: %d is used, program will exit", monitorPort)
-		os.Exit(1)
-	}
-	promethemsMonitor := monitor.GetPrometheusMonitorManager(monitor.PrometheusMonitorManagerConf{
-		Port: monitorPort,
-	})
-	conf.SetMonitorManager(promethemsMonitor)
-
-	// 等待1s 确保接口启动
-	time.Sleep(time.Second)
-}
-
-func startJob(configManager config.Manager) {
-	mailConfig := mailConfig{}
-	jobConfig := jobConfig{}
-	_ = configManager.Unmarshal(configSpaceMail, &mailConfig)
-	_ = configManager.Unmarshal(configSpaceJob, &jobConfig)
-
-	sender := mail.NewQQMailSender(mail.MailSenderConf{
-		Sender: mailConfig.Sender,
-		Token:  mailConfig.Token,
-	})
-
-	// 解析多个告警接收人
-	var receiverArr []string
-	if strings.Contains(mailConfig.Receiver, ",") {
-		receiverArr = strings.Split(mailConfig.Receiver, ",")
-	} else {
-		receiverArr = []string{mailConfig.Receiver}
-	}
-
+	envConfig := envConfig{}
+	_ = configManager.Unmarshal(configSpaceEnv, &envConfig)
+	sender, _ := mail.NewSMTPMailSender(configManager)
 	alerter := alert.GetMailAlerter(sender)
+	alerter.SetCommonTitle(fmt.Sprintf("[%s]", envConfig.Name))
+
 	job := monitorjob.GetCountMonitorJob(
-		monitorjob.SetMonitorInterval(jobConfig.Interval, jobConfig.Timeout),
+		monitorjob.SetMonitorInterval(countConfig.Interval, countConfig.Timeout),
 		monitorjob.SetAlerter(alerter),
-		monitorjob.SetReceiverArr(receiverArr),
-		monitorjob.SetEnv(jobConfig.Env))
+		monitorjob.SetConfigManager(configManager),
+		monitorjob.SetMonitorManager(monitorManager))
 	_ = job.Start()
 }

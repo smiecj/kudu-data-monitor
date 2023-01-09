@@ -1,0 +1,55 @@
+monitor:
+  port: 12112
+mail:
+  host: smtp.qq.com
+  sender: xxx
+  token: xxx
+  receiver: xxx
+env: 
+  name: produce
+count:
+  interval: 7200
+  timeout: 300
+impala:
+  host: impala_host
+  port: impala_port
+  database: real_time_db
+# datalink 地址配置
+datalink:
+  user: admin
+  password: admin
+  host: localhost
+  port: 8080
+  session_internal: 600
+# 表映射配置解析方式, 可选: file/datalink
+conf_class:
+  name: datalink
+  interval: 3600
+  ## min_mapping_count: 最少映射数，用于做配置检查，防止误覆盖
+  min_mapping_count: 10
+recovery:
+  enable: true
+  # 插入重建任务的超时时间（根据任务一般需要的时间而定，不需要太长），单位秒
+  add_timeout: 10
+  # 单个恢复任务的超时时间, 单位秒
+  job_timeout: 300
+  # 任务列表长度
+  job_chan_size: 10
+  # 执行时间: 根据 hive 源表大部分在凌晨进行重建，所以凌晨不会进行 impala 表重建操作
+  not_before_hour: 7
+  # 并发处理重启任务请求的最大任务数
+  ## 重启任务: ctx、sourceDB、targetDB、sourceTable、targetTable
+  ## 存入任务: channel, map 记录
+  ## 超时任务: 定时检查（5s），超时的任务 close ctx, remove from map
+  ## 任务正常结束: 记录起来（recoder）
+  concurrent: 10
+  # 重建任务后，同个表对应的任务不再重复重启的周期，单位分钟
+  ## 数据结构: lazy handler: recoder, judgeNeedRestart
+  lazy: 60
+  # kudu-tools 项目路径
+  tool_path: /tmp/kudu-tools
+  # zookeeper 上的 datalink 对应任务信息的父路径
+  task_zk_path: /datalink/tasks
+  job: 
+    # impala 的源表数据来源，一般对应 hive 库
+    source_db: stg
